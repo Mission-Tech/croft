@@ -1,0 +1,158 @@
+name: Infrastructure
+
+on:
+  push:
+    branches: ["**"]
+  release:
+    types: [published]
+
+env:
+  TF_VERSION: "1.9.1"
+  APP: bastion
+
+jobs:
+  branch-merge:
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    environment: ${{ matrix.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TF_VERSION }}
+
+      - name: Validate AWS Account ID
+        run: |
+          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the '${{ matrix.environment }}' environment"
+            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
+            echo "Settings > Secrets and variables > Actions > Environment secrets > ${{ matrix.environment }}"
+            exit 1
+          fi
+          echo "✅ AWS_ACCOUNT_ID is configured for environment: ${{ matrix.environment }}"
+          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci
+          role-session-name: github-${{ env.APP }}-plan
+          aws-region: us-east-1
+
+      - name: Initialize Terraform
+        run: tofu init
+        working-directory: tf/environments/${{ matrix.environment }}/infra
+
+      - name: Plan Terraform
+        run: tofu plan
+        working-directory: tf/environments/${{ matrix.environment }}/infra
+
+  main-merge:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      matrix:
+        environment: [dev, prod]
+    environment: ${{ matrix.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TF_VERSION }}
+
+      - name: Validate AWS Account ID
+        run: |
+          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the '${{ matrix.environment }}' environment"
+            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
+            echo "Settings > Secrets and variables > Actions > Environment secrets > ${{ matrix.environment }}"
+            exit 1
+          fi
+          echo "✅ AWS_ACCOUNT_ID is configured for environment: ${{ matrix.environment }}"
+          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci
+          role-session-name: github-${{ env.APP }}-apply
+          aws-region: us-east-1
+
+      - name: Initialize Terraform
+        run: tofu init
+        working-directory: tf/environments/${{ matrix.environment }}/infra
+
+      - name: Plan Terraform
+        run: tofu plan -out=tfplan
+        working-directory: tf/environments/${{ matrix.environment }}/infra
+
+      - name: Apply Terraform (Dev only)
+        if: matrix.environment == 'dev'
+        run: tofu apply tfplan
+        working-directory: tf/environments/${{ matrix.environment }}/infra
+
+  # Release job only applies to production environment
+  # Dev environment is already applied during main branch merge
+  release:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    environment: prod
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TF_VERSION }}
+
+      - name: Validate AWS Account ID
+        run: |
+          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the 'prod' environment"
+            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
+            echo "Settings > Secrets and variables > Actions > Environment secrets > prod"
+            exit 1
+          fi
+          echo "✅ AWS_ACCOUNT_ID is configured for environment: prod"
+          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-prod-ci"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-prod-ci
+          role-session-name: github-${{ env.APP }}-apply
+          aws-region: us-east-1
+
+      - name: Initialize Terraform
+        run: tofu init
+        working-directory: tf/environments/prod/infra
+
+      - name: Plan Terraform
+        run: tofu plan -out=tfplan
+        working-directory: tf/environments/prod/infra
+
+      - name: Apply Terraform
+        run: tofu apply tfplan
+        working-directory: tf/environments/prod/infra
