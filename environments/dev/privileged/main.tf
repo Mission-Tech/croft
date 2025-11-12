@@ -12,7 +12,7 @@ terraform {
         dynamodb_table = "coreinfra-tfstate-lock-${local.org}-${local.env}"
     }
 }
-
+```
 provider "aws" {}
 
 data "aws_region" "current" {}
