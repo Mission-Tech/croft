@@ -36,3 +36,15 @@ locals {
     repo: var.repo
   })
 }
+
+variable "db_host" {
+  description = "Database host that terraform can access (likely through the bastion proxy)"
+  type        = string
+  default     = null # Actually defaults to the RDS private vpc host via a datasource
+}
+
+variable "db_port" {
+  description = "Database port that terraform can access (likely through the bastion proxy)"
+  type        = number
+  default     = null # Actually defaults to the RDS instance port via a datasource
+}
