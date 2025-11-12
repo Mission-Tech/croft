@@ -1,158 +1,163 @@
-name: Infrastructure
+name: Infrastructure Deployment
 
 on:
   push:
     branches: ["**"]
+    paths:
+      - 'tf/**'
+      - '.github/workflows/infra.yml'
   release:
     types: [published]
+  workflow_dispatch:
 
 env:
   TF_VERSION: "1.9.1"
   APP: croft
+  ORG: missiontech
+  AWS_REGION: us-east-1
 
 jobs:
-  branch-merge:
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main'
+  upload-terraform:
+    # Skip uploads on release events since we'll use the main branch artifact
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
       contents: read
-    strategy:
-      matrix:
-        environment: [dev, prod]
-    environment: ${{ matrix.environment }}
-    
+
     steps:
+      - name: Debug GitHub context
+        run: |
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Ref: ${{ github.ref }}"
+          echo "GitHub SHA: ${{ github.sha }}"
+          echo "GitHub Event Name: ${{ github.event_name }}"
+          echo "GitHub Run ID: ${{ github.run_id }}"
+          echo "GitHub Run Number: ${{ github.run_number }}"
+
+      - name: Get OIDC Token for debugging
+        run: |
+          # Get the OIDC token
+          OIDC_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
+
+          # Decode the token (base64 decode the payload)
+          echo "=== OIDC Token Claims ==="
+          echo $OIDC_TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq . || echo "Failed to decode token"
+
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: ${{ env.TF_VERSION }}
-
-      - name: Validate AWS Account ID
+      - name: Configure Git for private repos
         run: |
-          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the '${{ matrix.environment }}' environment"
-            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
-            echo "Settings > Secrets and variables > Actions > Environment secrets > ${{ matrix.environment }}"
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "${{ secrets.TOOLS_AWS_ACCOUNT_ID }}" ]; then
+            echo "❌ ERROR: TOOLS_AWS_ACCOUNT_ID is not configured as a repository secret"
+            echo "Please configure TOOLS_AWS_ACCOUNT_ID in GitHub Settings > Secrets > Actions"
             exit 1
           fi
-          echo "✅ AWS_ACCOUNT_ID is configured for environment: ${{ matrix.environment }}"
-          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci"
+          echo "✅ Required secrets are configured"
 
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials for Tools account
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci
-          role-session-name: github-${{ env.APP }}-plan
-          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::${{ secrets.TOOLS_AWS_ACCOUNT_ID }}:role/${{ env.ORG }}-${{ env.APP }}-tools-github-ci # from hoist github_ci module
+          role-session-name: ${{ env.APP }}-infra
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Initialize Terraform
-        run: tofu init
-        working-directory: environments/${{ matrix.environment }}/infra
-
-      - name: Plan Terraform
-        run: tofu plan
-        working-directory: environments/${{ matrix.environment }}/infra
-
-  main-merge:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    strategy:
-      matrix:
-        environment: [dev, prod]
-    environment: ${{ matrix.environment }}
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: ${{ env.TF_VERSION }}
-
-      - name: Validate AWS Account ID
+      - name: Prepare metadata
+        id: metadata
         run: |
-          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the '${{ matrix.environment }}' environment"
-            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
-            echo "Settings > Secrets and variables > Actions > Environment secrets > ${{ matrix.environment }}"
-            exit 1
+          echo "timestamp=$(date -u +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "branch_name=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "author_email=$(git log -1 --pretty=format:'%ae')" >> $GITHUB_OUTPUT
+          echo "commit_message=$(git log -1 --pretty=format:'%s' | head -c 100)" >> $GITHUB_OUTPUT
+          
+          # Determine S3 prefix based on branch
+          if [ "${GITHUB_REF}" == "refs/heads/main" ]; then
+            echo "s3_prefix=main" >> $GITHUB_OUTPUT
+          else
+            echo "s3_prefix=branch" >> $GITHUB_OUTPUT
           fi
-          echo "✅ AWS_ACCOUNT_ID is configured for environment: ${{ matrix.environment }}"
-          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci"
+          
+          # Extract PR number if available
+          if [ -n "${{ github.event.pull_request.number }}" ]; then
+            echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          else
+            echo "pr_number=" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-${{ matrix.environment }}-ci
-          role-session-name: github-${{ env.APP }}-apply
-          aws-region: us-east-1
-
-      - name: Initialize Terraform
-        run: tofu init
-        working-directory: environments/${{ matrix.environment }}/infra
-
-      - name: Plan Terraform
-        run: tofu plan -out=tfplan
-        working-directory: environments/${{ matrix.environment }}/infra
-
-      - name: Apply Terraform (Dev only)
-        if: matrix.environment == 'dev'
-        run: tofu apply tfplan
-        working-directory: environments/${{ matrix.environment }}/infra
-
-  # Release job only applies to production environment
-  # Dev environment is already applied during main branch merge
-  release:
-    if: github.event_name == 'release'
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    environment: prod
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_version: ${{ env.TF_VERSION }}
-
-      - name: Validate AWS Account ID
+      - name: Create terraform bundle
         run: |
-          if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
-            echo "❌ ERROR: AWS_ACCOUNT_ID secret is not set for the 'prod' environment"
-            echo "Please configure the AWS_ACCOUNT_ID secret in GitHub repository settings:"
-            echo "Settings > Secrets and variables > Actions > Environment secrets > prod"
-            exit 1
-          fi
-          echo "✅ AWS_ACCOUNT_ID is configured for environment: prod"
-          echo "Will assume role: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-prod-ci"
+          # Create a temporary directory for the bundle
+          mkdir -p /tmp/terraform-bundle
+          
+          # Copy all terraform files and modules
+          cp -r tf /tmp/terraform-bundle/
+          
+          # Create metadata file with all the context
+          cat > /tmp/terraform-bundle/metadata.json <<EOF
+          {
+            "timestamp": "${{ steps.metadata.outputs.timestamp }}",
+            "commit_sha": "${{ github.sha }}",
+            "short_sha": "${{ steps.metadata.outputs.short_sha }}",
+            "branch": "${{ steps.metadata.outputs.branch_name }}",
+            "author": "${{ steps.metadata.outputs.author }}",
+            "author_email": "${{ steps.metadata.outputs.author_email }}",
+            "commit_message": "${{ steps.metadata.outputs.commit_message }}",
+            "pr_number": "${{ steps.metadata.outputs.pr_number }}",
+            "github_run_id": "${{ github.run_id }}",
+            "github_run_number": "${{ github.run_number }}",
+            "github_run_url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "github_actor": "${{ github.actor }}",
+            "github_event_name": "${{ github.event_name }}",
+            "github_repository": "${{ github.repository }}",
+            "terraform_version": "${{ env.TF_VERSION }}"
+          }
+          EOF
+          
+          # Include environment-specific variable information
+          cat > /tmp/terraform-bundle/required_vars.json <<EOF
+          {
+            "dev": {
+              "tools_account_id": "required"
+            },
+            "prod": {
+              "tools_account_id": "required"
+            },
+            "tools": {
+              "dev_account_id": "required",
+              "prod_account_id": "required",
+              "slack_cd_webhook_url": "required"
+            }
+          }
+          EOF
+          
+          # Create the zip file
+          cd /tmp/terraform-bundle
+          zip -r terraform-${{ steps.metadata.outputs.timestamp }}-${{ steps.metadata.outputs.short_sha }}.zip .
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.APP }}-prod-ci
-          role-session-name: github-${{ env.APP }}-apply
-          aws-region: us-east-1
-
-      - name: Initialize Terraform
-        run: tofu init
-        working-directory: environments/prod/infra
-
-      - name: Plan Terraform
-        run: tofu plan -out=tfplan
-        working-directory: environments/prod/infra
-
-      - name: Apply Terraform
-        run: tofu apply tfplan
-        working-directory: environments/prod/infra
+      - name: Upload to S3
+        run: |
+          # Always use latest.zip as the key for race-free versioned uploads
+          S3_KEY="${{ steps.metadata.outputs.s3_prefix }}/latest.zip"
+          
+          # Create a local copy with the fixed name
+          BUNDLE_NAME="terraform-${{ steps.metadata.outputs.timestamp }}-${{ steps.metadata.outputs.short_sha }}.zip"
+          cp "/tmp/terraform-bundle/${BUNDLE_NAME}" "/tmp/terraform-bundle/latest.zip"
+          
+          # Upload with metadata to the CI upload bucket
+          aws s3 cp "/tmp/terraform-bundle/latest.zip" \
+            "s3://${{ env.ORG }}-${{ env.APP }}-tools-${{ secrets.TOOLS_AWS_ACCOUNT_ID }}-ci-upload/${S3_KEY}" \
+            --metadata "timestamp=${{ steps.metadata.outputs.timestamp }},commit-sha=${{ github.sha }},short-sha=${{ steps.metadata.outputs.short_sha }},branch=${{ steps.metadata.outputs.branch_name }},author=${{ steps.metadata.outputs.author }},pr-number=${{ steps.metadata.outputs.pr_number }},github-run-id=${{ github.run_id }},github-actor=${{ github.actor }}"
+          
+          echo "✅ Uploaded terraform bundle to s3://${{ env.ORG }}-${{ env.APP }}-tools-${{ secrets.TOOLS_AWS_ACCOUNT_ID }}-ci-upload/${S3_KEY}"
+          echo "📦 Original bundle name: ${BUNDLE_NAME}"
+          echo "🔗 GitHub run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"

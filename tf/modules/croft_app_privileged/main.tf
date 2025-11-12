@@ -35,12 +35,9 @@ resource "aws_ssm_parameter" "app_db_credentials" {
         dbname   = local.app_db_name
     })
     
-    tags = {
+    tags = merge(local.tags, {
         Name = local.parameter_name
-        app  = var.app
-        env  = var.env
-        org  = var.org
-    }
+    })
 }
 
 # Create PostgreSQL role for the app

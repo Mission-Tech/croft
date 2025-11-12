@@ -51,12 +51,9 @@ resource "aws_iam_policy" "croft_app_permissions" {
     description = "Minimum permissions required to apply the croft_app module for ${var.app} in ${var.env}"
     policy      = data.aws_iam_policy_document.croft_app_permissions.json
     
-    tags = {
-        Name = "${var.app}-${var.env}-croft-app-permissions"
-        app  = var.app
-        env  = var.env
-        org  = var.org
-    }
+    tags = merge(local.tags, {
+      Name = "${var.app}-${var.env}-croft-app-permissions"
+    })
 }
 
 # Attach the policy to the CI role
