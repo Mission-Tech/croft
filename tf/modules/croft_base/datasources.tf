@@ -5,12 +5,13 @@ data "aws_vpc" "main" {
     }
 }
 
-# Data source for private subnets
-data "aws_subnets" "private" {
-    filter {
-        name   = "tag:Name"
-        values = local.conventional_coreinfra_subnets
-    }
+# Read VPC resources from coreinfra shared parameters
+data "aws_ssm_parameter" "private_subnet_ids" {
+  name = "/coreinfra/shared/private_subnet_ids"
+}
+
+locals {
+  private_subnet_ids = split(",", data.aws_ssm_parameter.private_subnet_ids.value)
 }
 
 # Data source for bastion security group
