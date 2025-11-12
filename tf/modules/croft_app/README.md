@@ -1,3 +1,3 @@
 # croft_app
 
-Creates the per-app resources for croft
+A terraform module that individual apps will instantiate to be able to use the croft database.
