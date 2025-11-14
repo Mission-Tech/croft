@@ -4,41 +4,39 @@ A Terraform-based shared database infrastructure for multi-tenant applications.
 
 ## About
 
-Croft provides a cost-effective PostgreSQL database infrastructure that allows multiple applications to share a single RDS instance while maintaining proper isolation. Each application gets its own database with a dedicated user, stored credentials, and proper security boundaries.
+Croft provides a cost-effective PostgreSQL database infrastructure that allows multiple applications to share a single RDS instance while maintaining proper isolation. Each application gets its own database with a dedicated user and the ability to create ephemeral connection tokens via IAM.
 
 ## Architecture
-
-### Core Components
-
-- **Shared RDS Instance**: A single PostgreSQL instance that hosts multiple application databases
-- **Per-App Databases**: Each application gets its own dedicated database (not just schema)
-- **Isolated Users**: Each application has its own PostgreSQL user with access only to its database
-- **Secure Credentials**: Database credentials are stored in AWS Systems Manager Parameter Store
-- **Network Security**: RDS access is restricted to bastion hosts via security groups
 
 ### Module Structure
 
 ```
 modules/
-├── croft_base/             # Creates the shared RDS instance
-├── croft_app_privileged/   # Creates per-app database and user (requires admin access)
-├── croft_app/              # Creates security group rule for app access
-├── croft_base_privileged/  # IAM permissions for applying croft_base
-└── internal/privileged/    # GitHub Actions OIDC integration
+├── croft_base/             # Creates the shared RDS instance. Consumed here in tf/app for Mission Tech.
+├── croft_app/              # Creates the per-application resources. Consumed by applications.
 ```
 
 ### Security Model
 
-- **Network Isolation**: RDS instance is in private subnets, accessible only via bastion hosts
+- **Network Isolation**: RDS instance is in private subnets
 - **Database Isolation**: Each app gets its own PostgreSQL database (not shared schemas)
-- **Credential Management**: Random passwords stored in AWS SSM Parameter Store
-- **Least Privilege**: Database users can only access their own database
+- **IAM authentication**: Database credentials can be obtained by apps via [IAM database authentication](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.html)
+- **Least Privilege**: Applications can only access their own databases
 
 ## Usage
 
+### 0: Instantiate Coreinfra
+
+This module relies on core infrastructure shared by multiple applications in each environment. Examples:
+- A VPC
+- A private hosted zone
+
+At Mission Tech, this is defined in [CoreInfra](https://github.com/Mission-Tech/coreinfra). Croft assumes that
+some of these resources are present.
+
 ### 1. Deploy Base Infrastructure
 
-First, deploy the shared RDS instance:
+First, deploy the shared RDS instance into each environment:
 
 ```hcl
 # environments/dev/infra/main.tf
@@ -50,146 +48,59 @@ module "croft_base" {
 }
 ```
 
+See `./tf/app` as a working example.
+
 ### 2. Create App Database
 
-For each application, create a dedicated database:
+Once the croft shared infrastructure is in place, each application can instantiate the `croft-app` module
+to obtain a database:
 
 ```hcl
-# Create app database tenant (requires privileged access)
-module "database_tenant" {
-    source = "path/to/croft/modules/croft_app_privileged"
-    app    = "myapp"
-    env    = "dev"
-    org    = "yourorg"
-    
-    # Optional: Override connection details for terraform
-    db_host = "localhost"  # For bastion proxy
-    db_port = 5432
+module "croft_database" {
+  source = "github.com/Mission-Tech/croft//tf/modules/croft_app?ref=croft_app/v0.0.1"
+
+  app    = local.app
+  env = var.env
+  org = var.org
+  repo = local.repo
+  tags = local.tags
+
+  app_security_group_id = module.hoist_lambda.app_security_group_id
+
+  db_host = var.croft_db_host
+  db_port = var.croft_db_port
+  app_iam_role_name = module.hoist_lambda.app_iam_role_name
 }
 
-# Allow app to connect to database
-module "database_access" {
-    source = "path/to/croft/modules/croft_app"
-    app    = "myapp"
-    env    = "dev"
-    org    = "yourorg"
-    
-    # Security group for your app (ECS service, Lambda, etc.)
-    app_security_group_id = aws_security_group.myapp.id
-}
 ```
+
+For a working example, see https://github.com/Mission-Tech/puree/tree/main/tf/app
 
 ### 3. Access Database Credentials
 
-Applications can retrieve their database credentials from SSM:
+Applications can retrieve their database credentials from SSM at runtime using [IAM authentication](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.IAMDBAuth.Connecting.html)
 
-```bash
-# Get database credentials
-aws ssm get-parameter \
-    --name "/apps/myapp-dev/croft_db_credentials" \
-    --with-decryption \
-    --query 'Parameter.Value' \
-    --output text
+### 4. Obtain network access
+
+The database is created in AWS private subnets with a hostname of `croft.<org>-<env>.internal`. 
+
+To connect locally, you can use [bastion](https://github.com/Mission-Tech/coreinfra). Example:
+
+```shell
+AWS_PROFILE=missiontech-dev bastion up croft.missiontech-dev.internal 5432 5432 --env dev --org missiontech
 ```
 
-The credential format is:
-```json
-{
-    "username": "myapp_dev",
-    "password": "generated-password",
-    "host": "rds-endpoint.amazonaws.com",
-    "port": 5432,
-    "dbname": "myapp_dev"
-}
-```
+### 5: Connect as the root user
 
-### 4. Connect to Database
-
-Applications connect directly to their database:
+To test your database with a local connection running locally, presuming you have a local bastion proxy running, 
+the AWS CLI installed, and an AWS_PROFILE with a role that can access the DB, you can run something like:
 
 ```bash
 # Connect to your app's database
-psql -h <rds-endpoint> -p 5432 -U myapp_dev -d myapp_dev
+PGPASSWORD=$(AWS_PROFILE=missiontech-dev ./tf/modules/croft_app/generate_auth_token.sh <<<'{"hostname":"croft-dev.<rds-id>.us-east-1.rds.amazonaws.com","port":"5432","username":"croft","region":"us-east-1"}' | jq -r .token) psql "host=127.0.0.1 port=5432 user=croft dbname=croft_dev sslmode=require"
 ```
 
-## Configuration
+Where <rds-id> is replaced with the ID that appears in your actual RDS endpoint.
 
-### Required Variables
-
-All modules require these core variables:
-
-- `app`: Application name
-- `env`: Environment (dev, prod, etc.)
-- `org`: Organization name
-
-### Optional Variables
-
-#### croft_app module
-
-- `db_host`: Override database host (useful for terraform provider connection via proxy)
-- `db_port`: Override database port
-- `github_org`: GitHub organization for OIDC (when using internal/privileged module)
-
-### Environment Setup
-
-1. **Backend Configuration**: Update S3 bucket and DynamoDB table names in `environments/*/main.tf`
-2. **Organization**: Set your organization name in the locals
-3. **GitHub Integration**: Configure `github_org` for CI/CD access
-
-## Cost Optimization
-
-Croft is designed for cost efficiency:
-
-- **Single RDS Instance**: Multiple apps share one `db.t4g.micro` instance
-- **Minimal Storage**: 20GB GP2 storage with 1-day backup retention
-- **No Multi-AZ**: Single AZ deployment for development
-- **Disabled Monitoring**: Enhanced monitoring and Performance Insights disabled
-
-## Security Best Practices
-
-1. **Network Access**: Always connect through bastion hosts
-2. **Credential Rotation**: Regularly rotate database passwords
-3. **Least Privilege**: Each app can only access its own database
-4. **Encryption**: All connections use SSL/TLS
-5. **Backup**: Daily automated backups with 1-day retention
-
-## Development
-
-### Local Development
-
-1. Set up SSH tunnel through bastion:
-```bash
-ssh -L 5432:rds-endpoint:5432 bastion-host
-```
-
-2. Run terraform with local connection:
-```bash
-terraform apply -var="db_host=localhost" -var="db_port=5432"
-```
-
-### Adding New Applications
-
-1. Include the `croft_app` module in your app's terraform
-2. Deploy with terraform apply
-3. Retrieve credentials from SSM Parameter Store
-4. Connect using the provided credentials
-
-## Troubleshooting
-
-### Connection Issues
-
-- Ensure you're connecting through the bastion host
-- Check security group rules allow bastion access
-- Verify database and user were created successfully
-
-### Permission Issues
-
-- Confirm the database user has proper permissions
-- Check that the database exists and is owned by the user
-- Verify credentials in SSM Parameter Store are current
-
-### Terraform Issues
-
-- Ensure PostgreSQL provider can connect (may need `db_host` override)
-- Check that admin credentials are available in SSM
-- Verify all required variables are set
+This pattern can also be used to connect as application users after running the croft-app module by using 
+`user=<app> dbname=<app>_<env>` in the connection string.

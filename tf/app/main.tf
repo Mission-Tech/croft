@@ -26,8 +26,7 @@ locals {
 }
 
 module "croft_base" {
-  source = "../modules/croft_base" # Uncomment for local development
-  # source = "github.com/Mission-Tech/croft//tf/modules/croft_base?ref=croft_base/v0.0.1"
+  source = "../modules/croft_base"
   env    = var.env
   org    = var.org
   repo = local.repo
