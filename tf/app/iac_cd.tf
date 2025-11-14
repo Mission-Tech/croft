@@ -14,7 +14,7 @@ module "hoist_github_ci" {
 
 module "hoist_iac_cd_tf_runner" {
   # source = "../../../hoist/tf/modules/iac_cd/tf_runner"
-  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=iac_cd/v0.0.7"
+  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=iac_cd/v0.0.8"
   app        = local.app
   env                           = var.env
   org        = var.org

@@ -20,7 +20,7 @@ provider "postgresql" {
     port      = local.db_port
     database  = local.admin_db_name
     username  = local.admin_username
-    password  = data.aws_ssm_parameter.admin_password.value
+    password  = data.external.db_auth_token.result.token
     sslmode   = "require"
     superuser = false
 }

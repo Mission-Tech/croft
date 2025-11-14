@@ -30,18 +30,11 @@ resource "aws_security_group_rule" "rds_ingress_bastion" {
     security_group_id        = aws_security_group.rds.id
 }
 
-
+# Generate random password for RDS master user (used once for bootstrap, then disabled)
 resource "random_password" "rds_master" {
     length  = 32
     special = true
     override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-resource "aws_ssm_parameter" "rds_master_password" {
-    name        = "/apps/${local.app}-${var.env}/postres_admin_password"
-    description = "Admin password for RDS ${var.env}"
-    type        = "SecureString"
-    value       = random_password.rds_master.result
 }
 
 # RDS instance
@@ -63,10 +56,11 @@ resource "aws_db_instance" "rds" {
     storage_encrypted            = true
     deletion_protection          = false
     auto_minor_version_upgrade   = true
-    backup_retention_period      = 1
+    backup_retention_period      = 3
     skip_final_snapshot          = true
     apply_immediately            = true                      # Add to avoid delays during password updates etc.
     copy_tags_to_snapshot        = true                      # Ensures tag inheritance
+    iam_database_authentication_enabled = true               # Enable IAM database authentication
 
     # Recommended additional performance tweaks for small instances:
     monitoring_interval          = 0                          # Disable enhanced monitoring (can enable if needed)
@@ -75,6 +69,38 @@ resource "aws_db_instance" "rds" {
     tags = merge(local.tags, {
         Name = "${local.app}-${var.env}"
     })
+}
+
+# Bootstrap: Grant rds_iam role to master user (one-time operation)
+# After this runs, password authentication is disabled and only IAM auth works
+resource "null_resource" "grant_rds_iam_bootstrap" {
+    # Only run once per RDS instance
+    triggers = {
+        rds_instance_id = aws_db_instance.rds.id
+    }
+
+    provisioner "local-exec" {
+        command = "${path.module}/grant_rds_iam_bootstrap.sh '${local.bootstrap_db_host}' '${local.bootstrap_db_port}' '${aws_db_instance.rds.db_name}' '${aws_db_instance.rds.username}' '${random_password.rds_master.result}'"
+    }
+
+    depends_on = [aws_db_instance.rds]
+}
+
+# Route53 record for internal database access
+data "aws_ssm_parameter" "private_hosted_zone_id" {
+    name = "/coreinfra/shared/private_hosted_zone_id"
+}
+
+data "aws_route53_zone" "private" {
+    zone_id = data.aws_ssm_parameter.private_hosted_zone_id.value
+}
+
+resource "aws_route53_record" "croft_db" {
+    zone_id = data.aws_route53_zone.private.zone_id
+    name    = "${local.app}.${data.aws_route53_zone.private.name}"
+    type    = "CNAME"
+    ttl     = 60
+    records = [aws_db_instance.rds.address]
 }
 
 

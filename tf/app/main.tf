@@ -32,4 +32,7 @@ module "croft_base" {
   org    = var.org
   repo = local.repo
   tags = local.tags
+
+  db_proxy_host = var.db_proxy_host
+  db_proxy_port = var.db_proxy_port
 }
