@@ -18,6 +18,11 @@ variable "app_security_group_id" {
     type        = string
 }
 
+variable "app_iam_role_name" {
+    description = "IAM role name for the app (ECS task role, Lambda execution role, etc.) that needs database access"
+    type        = string
+}
+
 variable "repo" {
   description = "The URL of the github repo managing this infrastructure"
   type        = string

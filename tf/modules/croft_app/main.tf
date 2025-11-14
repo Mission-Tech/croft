@@ -8,19 +8,6 @@ resource "aws_security_group_rule" "app_to_rds" {
     security_group_id        = data.aws_security_group.rds.id
 }
 
-# Generate random password for the app role
-resource "random_password" "app_role" {
-  length  = 32
-  special = false
-
-  lifecycle {
-    ignore_changes = [
-      length,
-      special,
-    ]
-  }
-}
-
 # Create database for the app
 resource "postgresql_database" "app_db" {
   name              = local.app_db_name
@@ -32,31 +19,41 @@ resource "postgresql_database" "app_db" {
   allow_connections = true
 }
 
-# Store app credentials in SSM Parameter Store
-resource "aws_ssm_parameter" "app_db_credentials" {
-  name        = local.parameter_name
-  description = "Database credentials for ${var.app} in ${var.env}"
-  type        = "SecureString"
-  value = jsonencode({
-    username = local.role_name
-    password = random_password.app_role.result
-    host     = data.aws_db_instance.croft.address
-    port     = data.aws_db_instance.croft.port
-    dbname   = local.app_db_name
-  })
-
-  tags = merge(local.tags, {
-    Name = local.parameter_name
-  })
-}
-
-# Create PostgreSQL role for the app
+# Create PostgreSQL role for the app (IAM authentication, no password)
 resource "postgresql_role" "app_role" {
   name     = local.role_name
   login    = true
-  password = random_password.app_role.result
 
   # Can create databases
   create_database  = true
   connection_limit = -1
+}
+
+# Grant rds_iam role to enable IAM authentication
+resource "postgresql_grant_role" "app_role_iam" {
+  role       = local.role_name
+  grant_role = "rds_iam"
+
+  depends_on = [postgresql_role.app_role]
+}
+
+# IAM policy to allow RDS IAM database authentication
+resource "aws_iam_role_policy" "rds_iam_connect" {
+  name = "rds-iam-connect-${var.app}-${var.env}"
+  role = var.app_iam_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "rds-db:connect"
+        ]
+        Resource = [
+          "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${data.aws_db_instance.croft.resource_id}/${local.role_name}"
+        ]
+      }
+    ]
+  })
 }

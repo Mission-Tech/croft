@@ -26,3 +26,15 @@ locals {
     repo: var.repo
   })
 }
+
+variable "db_proxy_host" {
+  description = "Database host for terraform to connect through. Defaults to actual RDS endpoint. Set to '127.0.0.1' for local development with bastion proxy."
+  type        = string
+  default     = null
+}
+
+variable "db_proxy_port" {
+  description = "Database port for terraform to connect through. Defaults to actual RDS port. Set to custom port for local development with bastion proxy."
+  type        = number
+  default     = null
+}
