@@ -1,11 +1,11 @@
 variable "aws_account_id" {
   description = "The ID of this aws account"
-  type = string
+  type        = string
 }
 
 variable "aws_region" {
   description = "AWS Region to use"
-  default = "us-east-1"
+  default     = "us-east-1"
 }
 
 variable "env" {
@@ -24,18 +24,18 @@ variable "github_org" {
 }
 
 
-variable tags {
+variable "tags" {
   description = "Additional tags to apply to every resource"
-  default = {}
-  type = map(string)
+  default     = {}
+  type        = map(string)
 }
 
 locals {
   tags = merge(var.tags, {
-    app: local.app
-    env: var.env
-    org: var.org
-    repo: local.repo
+    app : local.app
+    env : var.env
+    org : var.org
+    repo : local.repo
   })
 }
 

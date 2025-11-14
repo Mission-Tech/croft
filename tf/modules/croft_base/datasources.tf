@@ -1,8 +1,8 @@
 data "aws_vpc" "main" {
-    filter {
-        name   = "tag:Name"
-        values = [local.conventional_coreinfra_vpc_name]
-    }
+  filter {
+    name   = "tag:Name"
+    values = [local.conventional_coreinfra_vpc_name]
+  }
 }
 
 # Read VPC resources from coreinfra shared parameters
@@ -16,8 +16,8 @@ locals {
 
 # Data source for bastion security group
 data "aws_security_group" "bastion" {
-    filter {
-        name   = "tag:Name"
-        values = [local.conventional_bastion_security_group_name]
-    }
+  filter {
+    name   = "tag:Name"
+    values = [local.conventional_bastion_security_group_name]
+  }
 }

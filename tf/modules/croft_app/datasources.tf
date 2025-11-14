@@ -1,9 +1,9 @@
 # Get the RDS security group
 data "aws_security_group" "rds" {
-    filter {
-        name   = "tag:Name"
-        values = ["croft-${var.env}"]
-    }
+  filter {
+    name   = "tag:Name"
+    values = ["croft-${var.env}"]
+  }
 }
 
 # Generate IAM auth token for PostgreSQL provider
@@ -34,9 +34,9 @@ data "aws_caller_identity" "current" {}
 
 # Get private hosted zone for internal DNS
 data "aws_ssm_parameter" "private_hosted_zone_id" {
-    name = "/coreinfra/shared/private_hosted_zone_id"
+  name = "/coreinfra/shared/private_hosted_zone_id"
 }
 
 data "aws_route53_zone" "private" {
-    zone_id = data.aws_ssm_parameter.private_hosted_zone_id.value
+  zone_id = data.aws_ssm_parameter.private_hosted_zone_id.value
 }

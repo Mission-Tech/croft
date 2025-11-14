@@ -1,11 +1,11 @@
 # Security group rule to allow app to connect to database
 resource "aws_security_group_rule" "app_to_rds" {
-    type                     = "ingress"
-    from_port                = 5432
-    to_port                  = 5432
-    protocol                 = "tcp"
-    source_security_group_id = var.app_security_group_id
-    security_group_id        = data.aws_security_group.rds.id
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = var.app_security_group_id
+  security_group_id        = data.aws_security_group.rds.id
 }
 
 # Create database for the app
@@ -21,8 +21,8 @@ resource "postgresql_database" "app_db" {
 
 # Create PostgreSQL role for the app (IAM authentication, no password)
 resource "postgresql_role" "app_role" {
-  name     = local.role_name
-  login    = true
+  name  = local.role_name
+  login = true
 
   # Can create databases
   create_database  = true
