@@ -85,7 +85,6 @@ tofu apply
 - ✅ **Password authentication disabled** after bootstrap
 - ✅ **Pure IAM-based access** - all authentication via short-lived tokens
 - ✅ **No credential rotation** needed
-- ✅ **Auditable** through CloudTrail IAM events
 
 ### Troubleshooting
 
