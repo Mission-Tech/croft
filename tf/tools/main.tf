@@ -11,7 +11,7 @@ terraform {
   backend "s3" {
     bucket         = "${var.org}-coreinfra-${var.env}-${var.aws_account_id}-tfstate"
     key            = "${local.app}/terraform.tfstate"
-    region         =  var.aws_region
+    region         = var.aws_region
     dynamodb_table = "${var.org}-coreinfra-${var.env}-tfstate-lock"
   }
 
@@ -22,6 +22,6 @@ provider "aws" {
 }
 
 locals {
-  app          = "croft"
+  app  = "croft"
   repo = "https://github.com/${var.github_org}/${local.app}"
 }

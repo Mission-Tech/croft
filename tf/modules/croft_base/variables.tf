@@ -1,11 +1,11 @@
 variable "env" {
-    description = "Name of the environment (dev or prod)"
-    type        = string
+  description = "Name of the environment (dev or prod)"
+  type        = string
 }
 
 variable "org" {
-    description = "Name of the prg (e.g. missiontech)"
-    type        = string
+  description = "Name of the prg (e.g. missiontech)"
+  type        = string
 }
 
 variable "repo" {
@@ -13,17 +13,17 @@ variable "repo" {
   type        = string
 }
 
-variable tags {
+variable "tags" {
   description = "Tags to apply to every resource"
-  type = map(string)
+  type        = map(string)
 }
 
 locals {
   tags = merge(var.tags, {
-    app: local.app
-    env: var.env
-    org: var.org
-    repo: var.repo
+    app : local.app
+    env : var.env
+    org : var.org
+    repo : var.repo
   })
 }
 
