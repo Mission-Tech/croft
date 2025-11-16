@@ -55,7 +55,7 @@ jobs:
           echo "✅ Required secrets are configured"
 
       - name: Configure AWS credentials for Tools account
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::${{ secrets.TOOLS_AWS_ACCOUNT_ID }}:role/${{ env.ORG }}-${{ env.APP }}-tools-github-ci # from hoist github_ci module
           role-session-name: ${{ env.APP }}-infra
