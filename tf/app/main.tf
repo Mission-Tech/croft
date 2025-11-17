@@ -34,4 +34,6 @@ module "croft_base" {
 
   db_proxy_host = var.db_proxy_host
   db_proxy_port = var.db_proxy_port
+
+  tf_runner_security_group_id = module.hoist_iac_cd_tf_runner.runner_security_group_id
 }

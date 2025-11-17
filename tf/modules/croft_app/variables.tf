@@ -53,3 +53,8 @@ variable "db_port" {
   type        = number
   default     = null # Actually defaults to the RDS instance port via a datasource
 }
+
+variable "tf_runner_security_group_id" {
+  description = "Security group ID of the terraform runner (from iac_cd module). Required for bootstrap process to grant rds_iam role and for terraform to create per-app databases."
+  type        = string
+}

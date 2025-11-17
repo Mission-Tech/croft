@@ -38,3 +38,8 @@ variable "db_proxy_port" {
   type        = number
   default     = null
 }
+
+variable "tf_runner_security_group_id" {
+  description = "Security group ID of the terraform runner (from iac_cd module). Required for bootstrap process to grant rds_iam role."
+  type        = string
+}

@@ -30,6 +30,17 @@ resource "aws_security_group_rule" "rds_ingress_bastion" {
   security_group_id        = aws_security_group.rds.id
 }
 
+# Security group rule to allow terraform runner (CodeBuild) to connect to database
+# This is required for the bootstrap process that grants rds_iam role to the master user
+resource "aws_security_group_rule" "rds_ingress_tf_runner" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = var.tf_runner_security_group_id
+  security_group_id        = aws_security_group.rds.id
+}
+
 # Generate random password for RDS master user (used once for bootstrap, then disabled)
 resource "random_password" "rds_master" {
   length           = 32

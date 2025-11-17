@@ -8,6 +8,17 @@ resource "aws_security_group_rule" "app_to_rds" {
   security_group_id        = data.aws_security_group.rds.id
 }
 
+# Security group rule to allow terraform runner (CodeBuild) to connect to database
+# This is required for terraform to create per-app databases and roles via the postgresql provider
+resource "aws_security_group_rule" "tf_runner_to_rds" {
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = var.tf_runner_security_group_id
+  security_group_id        = data.aws_security_group.rds.id
+}
+
 # Create database for the app
 resource "postgresql_database" "app_db" {
   name              = local.app_db_name
