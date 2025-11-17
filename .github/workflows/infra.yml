@@ -2,10 +2,15 @@ name: Infrastructure Deployment
 
 on:
   push:
-    branches: ["**"]
+    branches:
+      - '**'
+      - '!dependabot/**'  # Exclude Dependabot branches
     paths:
       - 'tf/**'
       - '.github/workflows/infra.yml'
+  pull_request_target:
+    types: [labeled]
+    # Only runs when you add the "deploy-preview" label to a PR
   release:
     types: [published]
   workflow_dispatch:
@@ -18,8 +23,12 @@ env:
 
 jobs:
   upload-terraform:
-    # Skip uploads on release events since we'll use the main branch artifact
-    if: github.event_name == 'push'
+    # Run on push (except Dependabot), release, workflow_dispatch, or when "deploy-preview" label is added
+    if: |
+      (github.event_name == 'push' && github.actor != 'dependabot[bot]') ||
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.label.name == 'deploy-preview')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -38,6 +47,9 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # For pull_request_target, checkout the PR branch, not the base branch
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
 
       - name: Configure Git for private repos
         run: |

@@ -1,0 +1,46 @@
+name: Validate Terraform
+
+on:
+  pull_request:
+    paths:
+      - 'tf/**'
+      - '.github/workflows/validate.yml'
+
+jobs:
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.1
+
+      - name: Terraform Format Check
+        run: |
+          terraform fmt -check -recursive tf/
+
+      - name: Validate croft_base module
+        run: |
+          cd tf/modules/croft_base
+          terraform init -backend=false
+          terraform validate
+
+      - name: Validate croft_app module
+        run: |
+          cd tf/modules/croft_app
+          terraform init -backend=false
+          terraform validate
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run actionlint
+        uses: reviewdog/action-actionlint@v1
+        with:
+          level: warning
