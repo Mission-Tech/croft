@@ -14,7 +14,7 @@ module "hoist_github_ci" {
 
 module "hoist_iac_cd_tf_runner" {
   # source = "../../../hoist/tf/modules/iac_cd/tf_runner"
-  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=experimental/iac_cd/v0.0.45"
+  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=experimental/iac_cd/v0.0.46"
   app    = local.app
   env    = var.env
   org    = var.org
@@ -26,6 +26,7 @@ module "hoist_iac_cd_tf_runner" {
   tools_account_id            = var.tools_account_id
   tools_codepipeline_role_arn = local.conventional_tools_codepipeline_role_arn
   enable_auto_apply           = var.env != "prod" # Enable for dev, disable for prod
+  enable_vpc_config           = true              # Required for RDS access during bootstrap and app database provisioning
 
   # Pass terraform variables needed by this environment
   tfvars = {
