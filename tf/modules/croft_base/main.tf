@@ -91,7 +91,7 @@ resource "null_resource" "grant_rds_iam_bootstrap" {
   }
 
   provisioner "local-exec" {
-    command = "${path.module}/grant_rds_iam_bootstrap.sh '${local.bootstrap_db_host}' '${local.bootstrap_db_port}' '${aws_db_instance.rds.db_name}' '${aws_db_instance.rds.username}' '${random_password.rds_master.result}'"
+    command = "${path.module}/grant_rds_iam_bootstrap.sh '${local.bootstrap_db_host}' '${local.bootstrap_db_port}' '${aws_db_instance.rds.db_name}' '${aws_db_instance.rds.username}' '${random_password.rds_master.result}' | tee /tmp/log"
   }
 
   depends_on = [aws_db_instance.rds]

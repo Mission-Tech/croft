@@ -14,13 +14,12 @@ module "hoist_github_ci" {
 
 module "hoist_iac_cd_tf_runner" {
   # source = "../../../hoist/tf/modules/iac_cd/tf_runner"
-  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=iac_cd/v0.0.10"
+  source = "github.com/Mission-Tech/hoist//tf/modules/iac_cd/tf_runner?ref=experimental/iac_cd/v0.0.49"
   app    = local.app
   env    = var.env
   org    = var.org
   repo   = local.repo
   tags   = local.tags
-
 
   opentofu_version            = var.opentofu_version
   tools_account_id            = var.tools_account_id

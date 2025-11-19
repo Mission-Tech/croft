@@ -58,3 +58,21 @@ variable "tf_runner_security_group_id" {
   description = "Security group ID of the terraform runner (from iac_cd module). Required for bootstrap process to grant rds_iam role and for terraform to create per-app databases."
   type        = string
 }
+
+variable "postgres_username" {
+  description = "PostgreSQL username for terraform to connect as. Use 'croft_plan' for read-only plan operations, 'croft_apply' for full apply operations."
+  type        = string
+  default     = "croft" # Backward compatible default (admin user)
+}
+
+variable "tf_plan_role_name" {
+  description = "IAM role name for the terraform plan job. Will be granted rds-db:connect permission for croft_plan user."
+  type        = string
+  default     = null
+}
+
+variable "tf_apply_role_name" {
+  description = "IAM role name for the terraform apply job. Will be granted rds-db:connect permission for croft_apply user."
+  type        = string
+  default     = null
+}

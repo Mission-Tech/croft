@@ -11,8 +11,8 @@ locals {
   db_endpoint      = data.aws_db_instance.croft.address
   db_endpoint_port = data.aws_db_instance.croft.port
 
-  # Admin credentials
-  admin_username = "croft"
+  # Admin credentials (or plan user, depending on operation)
+  admin_username = var.postgres_username
 
   # Per-app tenant naming
   role_name = "${var.app}_${var.env}"
