@@ -23,6 +23,6 @@ output "tfvars_plan_only" {
 output "tfvars_apply_only" {
   description = "Terraform variables to pass to hoist_iac_cd_tf_runner.tfvars_apply_only (uses admin postgres user)"
   value = {
-    postgres_username = local.conventional_postgres_plan_username
+    postgres_username = local.conventional_postgres_apply_username
   }
 }
