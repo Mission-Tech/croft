@@ -35,15 +35,57 @@ resource "postgresql_role" "app_role" {
   name  = local.role_name
   login = true
 
-  # Can create databases
-  create_database  = true
+  create_database  = false # Cannot create more databases
   connection_limit = -1
+
+  roles = ["rds_iam"]
 }
 
-# Grant rds_iam role to enable IAM authentication
-resource "postgresql_grant_role" "app_role_iam" {
-  role       = local.role_name
-  grant_role = "rds_iam"
+# Grant croft_apply admin over the app role so it can manage roles created by croft
+resource "postgresql_grant_role" "app_role_to_apply" {
+  role              = local.conventional_postgres_apply_username
+  grant_role        = postgresql_role.app_role.name
+  with_admin_option = true
+}
+
+# Revoke public connect to the DB
+resource "postgresql_grant" "app_db_public_revoke" {
+  database    = postgresql_database.app_db.name
+  role        = "public"
+  object_type = "database"
+  privileges  = []
+
+  depends_on = [postgresql_database.app_db]
+}
+
+# Grant the app role to connect to the DB
+resource "postgresql_grant" "app_db_app_connect" {
+  database    = postgresql_database.app_db.name
+  role        = postgresql_role.app_role.name
+  object_type = "database"
+  privileges  = ["CONNECT"]
+
+  depends_on = [postgresql_role.app_role]
+}
+
+# Grant the app role to connect to the plan role
+# Let's it see table/column names and grant information, but not select from tables.
+resource "postgresql_grant" "croft_plan_db_app_connect" {
+  database    = postgresql_database.app_db.name
+  role        = local.conventional_postgres_plan_username
+  object_type = "database"
+  privileges  = ["CONNECT"]
+
+  depends_on = [postgresql_role.app_role]
+}
+
+# Grant the app role to connect to the apply role
+# Let's it see table/column names and grant information, but not select from tables.
+resource "postgresql_grant" "croft_apply_app_db_app_connect" {
+  database    = postgresql_database.app_db.name
+  role        = local.conventional_postgres_apply_username
+  object_type = "database"
+  privileges  = ["CONNECT"]
 
   depends_on = [postgresql_role.app_role]
 }

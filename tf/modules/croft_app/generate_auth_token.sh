@@ -20,4 +20,4 @@ TOKEN=$(aws rds generate-db-auth-token \
     --region "$REGION")
 
 # Output as JSON
-jq -n --arg token "$TOKEN" '{"token":$token}'
+jq -n --arg token "$TOKEN" '{"token":$token}' | tee /tmp/log2
