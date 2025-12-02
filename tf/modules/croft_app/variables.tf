@@ -18,9 +18,21 @@ variable "app_security_group_id" {
   type        = string
 }
 
+variable "migrations_runner_security_group_id" {
+  description = "Security group ID for the process that will apply migrations in the deployment pipeline"
+  type        = string
+  default     = null
+}
+
 variable "app_iam_role_name" {
   description = "IAM role name for the app (ECS task role, Lambda execution role, etc.) that needs database access"
   type        = string
+}
+
+variable "migrations_iam_role_name" {
+  description = "IAM role name for the process that will apply migrations in the deployment pipeline"
+  type        = string
+  default     = null
 }
 
 variable "repo" {

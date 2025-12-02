@@ -8,6 +8,18 @@ resource "aws_security_group_rule" "app_to_rds" {
   security_group_id        = data.aws_security_group.rds.id
 }
 
+# Security group rule to allow app to connect to database
+resource "aws_security_group_rule" "migrations_runner_to_rds" {
+  count = var.migrations_runner_security_group_id != null ? 1 : 0
+
+  type                     = "ingress"
+  from_port                = 5432
+  to_port                  = 5432
+  protocol                 = "tcp"
+  source_security_group_id = var.migrations_runner_security_group_id
+  security_group_id        = data.aws_security_group.rds.id
+}
+
 # Security group rule to allow terraform runner (CodeBuild) to connect to database
 # This is required for terraform to create per-app databases and roles via the postgresql provider
 resource "aws_security_group_rule" "tf_runner_to_rds" {
@@ -92,8 +104,31 @@ resource "postgresql_grant" "croft_apply_app_db_app_connect" {
 
 # IAM policy to allow RDS IAM database authentication
 resource "aws_iam_role_policy" "rds_iam_connect" {
-  name = "rds-iam-connect-${var.app}-${var.env}"
+  name = "croft-rds-iam-connect-${var.app}-${var.env}"
   role = var.app_iam_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "rds-db:connect"
+        ]
+        Resource = [
+          "arn:aws:rds-db:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:dbuser:${data.aws_db_instance.croft.resource_id}/${local.role_name}"
+        ]
+      }
+    ]
+  })
+}
+
+# IAM policy to allow RDS IAM database authentication for the migrations job
+resource "aws_iam_role_policy" "migrations_rds_iam_connect" {
+  count = var.migrations_iam_role_name != null ? 1 : 0
+
+  name = "croft-rds-iam-connect-migrations-${var.app}-${var.env}"
+  role = var.migrations_iam_role_name
 
   policy = jsonencode({
     Version = "2012-10-17"
