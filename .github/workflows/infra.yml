@@ -46,7 +46,7 @@ jobs:
           echo "GitHub Run Number: ${{ github.run_number }}"
 
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           # For pull_request_target, checkout the PR branch, not the base branch
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
